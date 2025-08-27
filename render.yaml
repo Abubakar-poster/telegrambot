@@ -1,0 +1,26 @@
+services:
+  - type: worker
+    name: news-bot
+    env: node
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHANNEL
+        sync: false
+      - key: TELEGRAM_CHANNEL_NAME
+        sync: false
+      - key: TELEGRAM_CHANNEL_URL
+        sync: false
+      - key: POLL_INTERVAL_MIN
+        sync: false
+      - key: WP_SITE
+        sync: false
+      - key: WP_USER
+        sync: false
+      - key: WP_APP_PASSWORD
+        sync: false
+      - key: DB_FILE
+        sync: false
