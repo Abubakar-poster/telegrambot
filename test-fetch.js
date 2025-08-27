@@ -1,10 +1,16 @@
-const { fetchFeed, scrapeDCL } = require('./rss-fetch');
+// test-fetch.js
+const { fetchFeed, scrapeDCL } = require("./rss-fetch");
 
 (async () => {
-  const bbcNews = await fetchFeed('https://feeds.bbci.co.uk/hausa/rss.xml');
-  console.log("BBC Hausa:", bbcNews);
+  try {
+    console.log("⏳ Fetching BBC Hausa RSS...");
+    const bbcNews = await fetchFeed("https://feeds.bbci.co.uk/hausa/rss.xml");
+    console.log("✅ BBC Hausa fetched:", bbcNews.slice(0, 3)); // show first 3 items
 
-  const dclNews = await scrapeDCL();
-  console.log("DCL Hausa:", dclNews);
+    console.log("\n⏳ Scraping DCL Hausa...");
+    const dclNews = await scrapeDCL();
+    console.log("✅ DCL Hausa fetched:", dclNews.slice(0, 3)); // show first 3 items
+  } catch (err) {
+    console.error("❌ Error testing feeds:", err.message);
+  }
 })();
-// test-fetch.js

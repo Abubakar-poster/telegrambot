@@ -1,34 +1,77 @@
-const FormData = require('form-data');
-const axios = require('axios');
+const axios = require("axios");
+const FormData = require("form-data");
+const fs = require("fs");
+const path = require("path");
 
-async function uploadImageToWP(imageUrl, filenameHint) {
-  const res = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-  const form = new FormData();
-  form.append('file', Buffer.from(res.data), { filename: filenameHint });
+const wpSite = process.env.WP_SITE;
+const wpUser = process.env.WP_USER;
+const wpAppPassword = process.env.WP_APP_PASSWORD;
 
-  const wpUrl = `${process.env.WP_SITE.replace(/\/$/, '')}/wp-json/wp/v2/media`;
-  const r = await axios.post(wpUrl, form, {
-    headers: {
-      ...form.getHeaders(),
-      Authorization: 'Basic ' + Buffer.from(`${process.env.WP_USER}:${process.env.WP_APP_PASSWORD}`).toString('base64')
-    }
-  });
+// Base64 encode WordPress credentials
+const authHeader =
+  "Basic " + Buffer.from(`${wpUser}:${wpAppPassword}`).toString("base64");
 
-  return r.data.id;
+// --- Upload image to WordPress ---
+async function uploadImageToWP(imageUrl, filename = "news-image.jpg") {
+  try {
+    // Download image
+    const res = await axios.get(imageUrl, { responseType: "arraybuffer" });
+    const filePath = path.join(__dirname, filename);
+    fs.writeFileSync(filePath, res.data);
+
+    // Prepare form data
+    const form = new FormData();
+    form.append("file", fs.createReadStream(filePath), filename);
+
+    // Upload to WordPress
+    const uploadRes = await axios.post(
+      `${wpSite}/wp-json/wp/v2/media`,
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          Authorization: authHeader,
+        },
+      }
+    );
+
+    // Clean up local file
+    fs.unlinkSync(filePath);
+
+    console.log(`📸 Uploaded image: ${uploadRes.data.id}`);
+    return uploadRes.data.id; // Return media ID
+  } catch (err) {
+    console.error("❌ Image upload failed:", err.message);
+    return null;
+  }
 }
 
+// --- Create WordPress post ---
 async function createWordpressPost(title, content, featuredMediaId = null) {
-  const url = `${process.env.WP_SITE.replace(/\/$/, '')}/wp-json/wp/v2/posts`;
-  const body = { title, content, status: 'publish' };
-  if (featuredMediaId) body.featured_media = featuredMediaId;
+  try {
+    const postData = {
+      title,
+      content,
+      status: "publish", // auto publish
+    };
 
-  const res = await axios.post(url, body, {
-    headers: {
-      Authorization: 'Basic ' + Buffer.from(`${process.env.WP_USER}:${process.env.WP_APP_PASSWORD}`).toString('base64')
+    if (featuredMediaId) {
+      postData.featured_media = featuredMediaId;
     }
-  });
 
-  return res.data;
+    const res = await axios.post(`${wpSite}/wp-json/wp/v2/posts`, postData, {
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+      },
+    });
+
+    console.log(`📝 Created post: ${res.data.link}`);
+    return res.data;
+  } catch (err) {
+    console.error("❌ Post creation failed:", err.message);
+    return null;
+  }
 }
 
 module.exports = { uploadImageToWP, createWordpressPost };

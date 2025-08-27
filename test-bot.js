@@ -1,9 +1,18 @@
 // test-bot.js
-require('dotenv').config();
-const TelegramBot = require('node-telegram-bot-api');
-const bot = new TelegramBot(process.env.8380189856:AAGgVPLFl_7gYj2T5L1chTaMngyl8yUEz0A, { polling: true });
+require("dotenv").config();
+const TelegramBot = require("node-telegram-bot-api");
 
-bot.on('message', msg => {
-  console.log('Got a message:', msg);
-  bot.sendMessage(msg.chat.id, 'Hello from test bot!');
+// Load token from .env
+const botToken = process.env.BOT_TOKEN;
+
+if (!botToken) {
+  console.error("❌ BOT_TOKEN missing from .env file");
+  process.exit(1);
+}
+
+const bot = new TelegramBot(botToken, { polling: true });
+
+bot.on("message", (msg) => {
+  console.log("📩 Got a message:", msg.text);
+  bot.sendMessage(msg.chat.id, "Hello from test bot!");
 });

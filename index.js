@@ -1,50 +1,90 @@
-// rss-fetch.js
-const RSSParser = require('rss-parser');
-const parser = new RSSParser();
-const axios = require('axios');
-const cheerio = require('cheerio');
+// --- Load environment variables ---
+require("dotenv").config();
+const TelegramBot = require("node-telegram-bot-api");
+const { fetchFeed, scrapeDCL } = require("./rss-fetch");
+const fs = require("fs-extra");
+const { uploadImageToWP, createWordpressPost } = require("./wordpress");
 
-// Fetch from RSS feed
-async function fetchFeed(rssUrl) {
-  try {
-    const feed = await parser.parseURL(rssUrl);
-    return feed.items.map(i => ({
-      id: i.link,
-      title: i.title,
-      link: i.link,
-      excerpt: i.contentSnippet || i.content || '',
-      image: i.enclosure && i.enclosure.url ? i.enclosure.url : null
-    }));
-  } catch (error) {
-    console.error(`❌ Error fetching RSS feed: ${error.message}`);
-    return [];
+// --- Database for posted news ---
+let db = fs.existsSync("posted.json")
+  ? fs.readJsonSync("posted.json")
+  : { posted: [] };
+
+function isPosted(id) {
+  return db.posted.includes(id);
+}
+
+function markPosted(id) {
+  if (!db.posted.includes(id)) {
+    db.posted.push(id);
+    fs.writeJsonSync("posted.json", db, { spaces: 2 });
   }
 }
 
-// Scrape DCL Hausa website
-async function scrapeDCL() {
+// --- Setup bot ---
+const botToken = process.env.BOT_TOKEN;
+const channel = process.env.TELEGRAM_CHANNEL;
+const pollInterval =
+  parseInt(process.env.POLL_INTERVAL_MIN || "10") * 60 * 1000; // default 10 min
+
+if (!botToken || !channel) {
+  console.error("❌ Missing BOT_TOKEN or TELEGRAM_CHANNEL in .env file");
+  process.exit(1);
+}
+
+const bot = new TelegramBot(botToken, { polling: false });
+
+// --- Send news to Telegram ---
+async function postToTelegram(bot, channel, item) {
+  const text = `📰 <b>${item.title}</b>\n\n${item.excerpt}\n\n🔗 <a href="${item.link}">Read original</a>`;
+  if (item.image) {
+    await bot.sendPhoto(channel, item.image, { caption: text, parse_mode: "HTML" });
+  } else {
+    await bot.sendMessage(channel, text, { parse_mode: "HTML" });
+  }
+  console.log(`✅ Sent to Telegram: ${item.title}`);
+}
+
+// --- Send news to WordPress ---
+async function postToWordPress(item) {
+  let imageId = null;
+  if (item.image) {
+    imageId = await uploadImageToWP(item.image, "news-image.jpg");
+  }
+  await createWordpressPost(
+    item.title,
+    `<p>${item.excerpt}</p><p><a href="${item.link}">Read more</a></p>`,
+    imageId
+  );
+  console.log(`✅ Posted to WordPress: ${item.title}`);
+}
+
+// --- Main fetch & post function ---
+async function fetchAndPostNews() {
   try {
-    const url = 'https://dclhausa.com/';
-    const res = await axios.get(url);
-    const $ = cheerio.load(res.data);
-    const out = [];
+    const bbcNews = await fetchFeed("https://feeds.bbci.co.uk/hausa/rss.xml");
+    const dclNews = await scrapeDCL();
+    const allNews = [...bbcNews, ...dclNews];
 
-    $('article, .post, .td-module-container').each((i, el) => {
-      const a = $(el).find('a').first();
-      const href = a.attr('href');
-      const title = a.text().trim() || $(el).find('h2, h3').text().trim();
-      const img = $(el).find('img').first().attr('src') || null;
-
-      if (href && title) {
-        out.push({ id: href, title, link: href, excerpt: '', image: img });
+    for (const item of allNews) {
+      if (!isPosted(item.id)) {
+        try {
+          await postToTelegram(bot, channel, item);
+          await postToWordPress(item);
+          markPosted(item.id); // Only mark if both succeed
+        } catch (err) {
+          console.error(`❌ Failed for ${item.title}: ${err.message}`);
+        }
       }
-    });
+    }
 
-    return out;
-  } catch (error) {
-    console.error(`❌ Error scraping DCL Hausa: ${error.message}`);
-    return [];
+    console.log("🎯 Cycle completed");
+  } catch (err) {
+    console.error("❌ Error fetching news:", err.message);
   }
 }
 
-module.exports = { fetchFeed, scrapeDCL };
+// --- Start automatic loop ---
+console.log(`⏳ News bot started, checking every ${pollInterval / 60000} minutes...`);
+fetchAndPostNews(); // Run immediately
+setInterval(fetchAndPostNews, pollInterval);
