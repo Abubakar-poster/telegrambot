@@ -88,3 +88,16 @@ async function fetchAndPostNews() {
 console.log(`⏳ News bot started, checking every ${pollInterval / 60000} minutes...`);
 fetchAndPostNews(); // Run immediately
 setInterval(fetchAndPostNews, pollInterval);
+
+// --- Keep Render free service alive (Express server) ---
+const express = require("express");
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("✅ News bot is running!");
+});
+
+app.listen(PORT, () => {
+  console.log(`🌍 Keep-alive server running on port ${PORT}`);
+});
